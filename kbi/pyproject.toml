@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "kbi"
+version = "0.1.0"
+description = ""
+authors = ["Connor Tannahill <ctannahill3@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+ipython = "^8.32.0"
+ipykernel = "^6.29.5"
+jsonpickle = "^4.0.2"
+sqlalchemy = "^2.0.38"
+kedro = "^0.19.11"
+jinja2 = "^3.1.5"
+lazy-object-proxy = "^1.10.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+kbi = "kbi.KedroMagic:run"
