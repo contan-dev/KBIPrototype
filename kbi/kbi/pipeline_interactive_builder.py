@@ -49,7 +49,8 @@ class PipelineInteractiveBuilder:
         # Build the management objects
         self.cat_manager = CatalogManager(self.db_connection)
         self.param_manager = ParameterManager(self.pipeline_name, self.db_connection)
-        self.pipeline_manager = PipelineManager(self.pipeline_name, self.db_connection)
+        self.pipeline_path = self._kedro_project_dir / 'kbi-project' / 'src' / 'kbi_project' / 'pipelines' / self.pipeline_name
+        self.pipeline_manager = PipelineManager(self.pipeline_name, self.pipeline_path, self.db_connection)
 
         # Create the Kedro project if it doesn't exist
         self.create_kedro_project()
@@ -93,9 +94,9 @@ class PipelineInteractiveBuilder:
                 raise Exception(f"Error creating Kedro project: {resp.stderr}")
         
         # Check if the pipeline directory for this notebook exists. If not, create it.
-        project_path = self._kedro_project_dir / 'kbi-project' / 'src' / 'kbi_project' / 'pipelines' / self.pipeline_name
-        print(f'project path {project_path}')
-        if not project_path.exists():
+        self.pipeline_path = self._kedro_project_dir / 'kbi-project' / 'src' / 'kbi_project' / 'pipelines' / self.pipeline_name
+        print(f'project path {self.pipeline_path}')
+        if not self.pipeline_path.exists():
             resp = subprocess.run(
                 ["kedro", "pipeline", "create", self.pipeline_name],
                 cwd=self._kedro_project_dir / "kbi-project",
@@ -107,7 +108,6 @@ class PipelineInteractiveBuilder:
 
     def kbi_node(
         self,
-        node_name: str | None = None,
         inputs: str | list[str] | dict[str, str] | None = None,
         outputs: str | list[str] | dict[str, str] | None = None,
         tags: list[str] | None = None,
@@ -122,7 +122,6 @@ class PipelineInteractiveBuilder:
         Args: 
             - inputs: the input variable(s) for the node
             - outputs: the output variable(s) for the node
-            - node_name: the name of the node
             - tags: the tags for the node
             - confirms: the confirms for the node
             - namespace: the namespace for the node
@@ -133,18 +132,16 @@ class PipelineInteractiveBuilder:
             def wrapper():
                 function_content = inspect.getsource(func) 
                 result = self.pipeline_manager.evaluate_node(
+                    func.__name__,
                     function_content,
                     inputs,
                     outputs,
-                    f'{self.pipeline_name}_node_{func.__name__}' if not node_name else node_name,
                     tags,
                     confirms,
                     namespace
                 )
 
                 print('result:', result)
-
-                print("Hey I'm running heeya!")
 
             return wrapper
         
