@@ -18,7 +18,11 @@ class PipelineInteractiveBuilder:
     2. Writing config to the persistant Kedro project.
     """
 
-    def __init__(self, pipeline_name: str, project_path: str):
+    def vprint(self, str, **args):
+        if self.verbose:
+            print(str, **args)
+
+    def __init__(self, pipeline_name: str, project_path: str, verbose: bool = False):
         """
         Constructor for PipelineInteractiveBuilder class.
 
@@ -27,11 +31,8 @@ class PipelineInteractiveBuilder:
             2. Create the skeleton of the Kedro project (if it doesn't already exist)
         """
 
-        # TODO: check if this pipeline already exists and load it if so
-
-        print('printing path', pathlib.Path(project_path).resolve())
-
         self._kbi_dir = pathlib.Path(project_path) / 'kbi_data'
+        self.verbose = verbose
 
         if not self._kbi_dir.exists():
             self._kbi_dir.mkdir()
@@ -50,7 +51,7 @@ class PipelineInteractiveBuilder:
         self.cat_manager = CatalogManager(self.db_connection)
         self.param_manager = ParameterManager(self.pipeline_name, self.db_connection)
         self.pipeline_path = self._kedro_project_dir / 'kbi-project' / 'src' / 'kbi_project' / 'pipelines' / self.pipeline_name
-        self.pipeline_manager = PipelineManager(self.pipeline_name, self.pipeline_path, self.db_connection)
+        self.pipeline_manager = PipelineManager(self.pipeline_name, self.pipeline_path, self._kedro_project_dir / 'kbi-project', self.db_connection, self.verbose)
 
         # Create the Kedro project if it doesn't exist
         self.create_kedro_project()
@@ -67,6 +68,15 @@ class PipelineInteractiveBuilder:
         connection.commit()
 
         return connection
+    
+    def update_imports(self, imports: str):
+        """
+        Append an import statement to the pipeline file.
+
+        Args:
+            - imports: the import statements to append
+        """
+        self.pipeline_manager.update_imports(imports)
 
     def create_kedro_project(self):
         """
@@ -77,9 +87,6 @@ class PipelineInteractiveBuilder:
 
         project_exists = self._kedro_project_dir.exists()
 
-        print('does the project exist?', project_exists)
-        print('project path:', self._kedro_project_dir.resolve())
-        
         # Create the Kedro project
         if not project_exists:
             self._kedro_project_dir.mkdir()
@@ -95,7 +102,6 @@ class PipelineInteractiveBuilder:
         
         # Check if the pipeline directory for this notebook exists. If not, create it.
         self.pipeline_path = self._kedro_project_dir / 'kbi-project' / 'src' / 'kbi_project' / 'pipelines' / self.pipeline_name
-        print(f'project path {self.pipeline_path}')
         if not self.pipeline_path.exists():
             resp = subprocess.run(
                 ["kedro", "pipeline", "create", self.pipeline_name],
@@ -141,7 +147,9 @@ class PipelineInteractiveBuilder:
                     namespace
                 )
 
-                print('result:', result)
+                print('result', result)
+
+                return result
 
             return wrapper
         

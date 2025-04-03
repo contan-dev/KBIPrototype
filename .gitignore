@@ -2,4 +2,5 @@
 *.db
 __pycache__
 /notebooks/kbi_data/
+/notebooks/kbi_data/**/.py
 /notebooks/.ipynb_checkpoints

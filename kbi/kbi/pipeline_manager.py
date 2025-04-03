@@ -4,6 +4,9 @@ import pathlib
 import re
 import json
 import os
+from kedro.framework.session import KedroSession
+from kedro.framework.startup import bootstrap_project
+from pathlib import Path
 
 os.environ["KEDRO_DISABLE_TELEMETRY"] = "true"
 class PipelineManager:
@@ -11,10 +14,16 @@ class PipelineManager:
     Manages the pipeline and node info for a interactive pipeline.
     """
 
-    def __init__(self
+    def vprint(self, str, **args):
+        if self.verbose:
+            print(str, **args)
+
+    def __init__( self
                 , pipeline_name: str
                 , pipeline_path: pathlib.Path
-                , db_connection: sqlite3.Connection):
+                , project_dir_path: pathlib.Path
+                , db_connection: sqlite3.Connection
+                , verbose: bool = False):
         """
         Constructor for ParameterManager class.
 
@@ -27,9 +36,11 @@ class PipelineManager:
             - db_connection: the connection to the KBI database.
         """
 
+        self.project_dir_path = project_dir_path
         self.pipeline_name = pipeline_name
         self.pipeline_path = pipeline_path
         self.db_connection = db_connection
+        self.verbose = verbose
 
         # Create the pipelines and node table, which this class will manage
         cursor = db_connection.cursor()
@@ -37,7 +48,8 @@ class PipelineManager:
         # Create the tables if they don't already exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS pipelines (
-                pipeline_name TEXT PRIMARY KEY
+                pipeline_name TEXT PRIMARY KEY,
+                pipeline_imports TEXT
             );
         ''')
 
@@ -64,6 +76,28 @@ class PipelineManager:
 
         self.db_connection.commit()
     
+    def update_imports(self, imports: str):
+        """
+        Update the imports for the Kedro pipeline.
+        """
+
+        # Trim trailing newlines from imports
+        imports = imports.rstrip()
+
+        cursor = self.db_connection.cursor()
+
+        cursor.execute(
+            "SELECT * FROM pipelines WHERE pipeline_name = ?;",
+            (self.pipeline_name,)
+        )
+        imports_saved = cursor.fetchone()[1]
+        if imports_saved != imports:
+            cursor.execute(
+                "UPDATE pipelines SET pipeline_imports = ? WHERE pipeline_name = ?;",
+                (imports, self.pipeline_name)
+            )
+            self.db_connection.commit()
+
     def trim_decorator(self, function_contents: str) -> str:
         """
         Trim the decorator from the function contents.
@@ -109,32 +143,28 @@ class PipelineManager:
         # should fetch the outputs from the previous job and return them.
         # TODO: Implement this. For now we will just always run.
         cursor = self.db_connection.cursor()
-        print('node_name', node_name)
 
         # Pull the node from the DB
-        print("running ", f"SELECT * FROM nodes WHERE pipeline_name = {self.pipeline_name} AND node_name = {node_name};")
+        self.vprint(f"running SELECT * FROM nodes WHERE pipeline_name = {self.pipeline_name} AND node_name = {node_name};")
         result = cursor.execute(
             "SELECT * FROM nodes "
             "WHERE pipeline_name = ? AND node_name = ?;",
             (self.pipeline_name, node_name)
         )
 
-        print('full result', result)
-
         node = result.fetchone()
-        print('result = ', node)
         def ser_or_none(inp):
             return None if inp is None else json.dumps(inp)
 
         if node == None or len(node) == 0:
-            print('executing', f"INSERT INTO nodes(node_name, node_content, inputs, outputs, tags, confirms, namespace, pipeline_name) VALUES({node_name}, {node_content}, {inputs}, {outputs}, {tags}, {confirms}, {namespace}, {self.pipeline_name}));")
+            self.vprint(f"executing INSERT INTO nodes(node_name, node_content, inputs, outputs, tags, confirms, namespace, pipeline_name) VALUES({node_name}, {node_content}, {inputs}, {outputs}, {tags}, {confirms}, {namespace}, {self.pipeline_name}));")
             cursor.execute(
                 "INSERT INTO nodes(node_name, node_content, inputs, outputs, tags, confirms, namespace, pipeline_name) "
                 "VALUES(?, ?, ?, ?, ?, ?, ?, ?);",
                 (node_name, node_content, ser_or_none(inputs), ser_or_none(outputs), ser_or_none(tags), confirms, namespace, self.pipeline_name)
             )
             self.db_connection.commit()
-            self.update_nodes_and_pipelines()
+            return self.update_nodes_and_pipelines(to_node=node_name)
         else:
             # Update the node in the database
             if node[1] != node_content or \
@@ -149,39 +179,43 @@ class PipelineManager:
                     "WHERE pipeline_name = ? AND node_name = ?;",
                     (node_name, node_content, ser_or_none(inputs), ser_or_none(outputs), ser_or_none(tags), confirms, namespace, self.pipeline_name, node_name)
                 )
-                # import pdb; pdb.set_trace()
-
                 self.db_connection.commit()
 
-                # import pdb; pdb.set_trace()
-
-                self.update_nodes_and_pipelines()
+                return self.update_nodes_and_pipelines(to_node=node_name)
             else:
                 print("Node unchanged.")
+        
+        return None
     
-    def update_nodes_and_pipelines(self):
+    def update_nodes_and_pipelines(self, to_node=None):
         """
         Update the nodes file for this pipeline using the Jinja2 templates.
         
         Also triggers the execution of the pipeline.
         """
+        
+        # Fetch any imports from the pipelines table
+        cursor = self.db_connection.cursor()
+        result = cursor.execute(
+            "SELECT * FROM pipelines WHERE pipeline_name = ?;",
+            (self.pipeline_name,)
+        )
+        pipeline = result.fetchone()
+        imports = pipeline[1]
 
         # Fetch all of the nodes from the DB
-        cursor = self.db_connection.cursor()
         result = cursor.execute(
             "SELECT * FROM nodes WHERE pipeline_name = ?;",
             (self.pipeline_name,)
         )
         nodes_list = result.fetchall()
-        print('nodes_list', nodes_list)
         nodes_fun_list = [node[1] for node in nodes_list]
-        print('nodes_fun_list', nodes_list)
 
         """ Write the new pipelines file """
         path = pathlib.Path(__file__).parent / 'templates'
         env = Environment(loader=FileSystemLoader(path))
         template = env.get_template('project_pipelines_nodes.pytemplate')
-        result = template.render(nodes_fun_list=nodes_fun_list)
+        result = template.render(imports=imports, nodes_fun_list=nodes_fun_list)
 
         # Write the nodes file
         with open(self.pipeline_path / 'nodes.py', 'w') as f:
@@ -202,7 +236,6 @@ class PipelineManager:
             }
             nodes_formatted.append(out)
         
-        print('nodes_formatted', nodes_formatted)
         result = template.render(nodes_list=nodes_formatted)
 
         # Write the pipelines file
@@ -210,6 +243,30 @@ class PipelineManager:
             f.write(result)
         
         # Trigger execution
+        return self.execute_pipeline(to_node)
+    
+    def execute_pipeline(self, to_node=None):
+        """
+        Executes the Kedro pipeline.
+
+        TODO: add intelligent execution of the nodes based on pre-cached info,
+              not sure how KedroSessions can handle this
+        """
+        bootstrap_project(Path(self.project_dir_path))
+        
+        with KedroSession.create(
+            project_path=self.project_dir_path,
+            save_on_close=True
+        ) as session:
+            result = session.run(
+                pipeline_name=self.pipeline_name,
+                to_nodes=[to_node] if to_node is not None else None)
+                
+            # ctx = session.load_context()
+            # cata = ctx._get_catalog()
+            # print('LOADING', cata.load('two'))
+
+            return result
 
 
 

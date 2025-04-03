@@ -1,25 +1,41 @@
 from __future__ import print_function
 from IPython.core.magic import (Magics, magics_class, line_magic,
                                 cell_magic, line_cell_magic)
-import ipykernel
-import json
 import shlex
 from typing import Dict
 import argparse
-import os
 import re
+import ast
 from .pipeline_interactive_builder import PipelineInteractiveBuilder
 
 @magics_class
 class KedroMagic(Magics):
 
     def __init__(self, shell, data: Dict[str, str]):
-        # You must call the parent constructor
         super(KedroMagic, self).__init__(shell)
         self.shell = shell
-        self.file_name: str = data['file_path']
+        self.data = data
+    
+    def vprint(self, str, **args):
+        if self.verbose:
+            print(str, **args)
+    
+    @line_magic
+    def kbi_initialize(self, line):
+        """
+        Initialize the KBI context.
+        """
+        print('initializing line = ', line)
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-pp', '--project-path', required=True)
+        parser.add_argument('-pn', '--pipeline-name', required=True)
+        parser.add_argument('-v', '--verbose', action='store_true')
+        args = parser.parse_args(shlex.split(line))
 
-        self.pipeline_manager = PipelineInteractiveBuilder(self.file_name)
+        self.verbose = args.verbose
+        self.kbi_builder = PipelineInteractiveBuilder(args.pipeline_name, args.project_path, args.verbose)
+        self.shell.push({'kbi_builder': self.kbi_builder})
+        self.vprint('Initializing KBI context')
 
     @cell_magic
     def catalog(self, line, cell):
@@ -27,26 +43,9 @@ class KedroMagic(Magics):
         pass
 
     @cell_magic
-    def kedro_node(self, line, cell):
-        """
-        Defines a Kedro node.
-
-        Arg format (received by `line` variable): 
-            -pipeline (required): the name of the pipeline that this node will be added to
-        """
-
-        # TODO: validate that the line contains necessary cell-magics (input and output variable names)
-
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-pipeline', required=True)
-
-        args = parser.parse_args(shlex.split(line))
-
-        execution_count = self.parent.display_trap.hook.exec_result.execution_count
-
-        print(f"Execution count: {execution_count}")
-
-        return line, cell
+    def kbi_imports(self, line, cell):
+        """Defines a set of imports for the pipeline. These imports are copied """
+        self.kbi_builder.update_imports(cell)
     
     @line_magic
     def print_pipeline(self, line):
