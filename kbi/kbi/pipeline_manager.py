@@ -1,5 +1,5 @@
 import sqlite3
-from jinja2 import Template, Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 import pathlib
 import re
 import json
@@ -261,10 +261,6 @@ class PipelineManager:
             result = session.run(
                 pipeline_name=self.pipeline_name,
                 to_nodes=[to_node] if to_node is not None else None)
-                
-            # ctx = session.load_context()
-            # cata = ctx._get_catalog()
-            # print('LOADING', cata.load('two'))
 
             return result
 

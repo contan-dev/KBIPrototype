@@ -7,6 +7,7 @@ import argparse
 import re
 import ast
 from .pipeline_interactive_builder import PipelineInteractiveBuilder
+# from pydantic import BaseModel
 
 @magics_class
 class KedroMagic(Magics):
@@ -37,14 +38,12 @@ class KedroMagic(Magics):
         self.shell.push({'kbi_builder': self.kbi_builder})
         self.vprint('Initializing KBI context')
 
-    @cell_magic
-    def catalog(self, line, cell):
-        """Defines the catalog for this Kedro project. Should only be run once"""
-        pass
 
     @cell_magic
     def kbi_imports(self, line, cell):
         """Defines a set of imports for the pipeline. These imports are copied """
+
+        # The format of the 
         self.kbi_builder.update_imports(cell)
     
     @line_magic

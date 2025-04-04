@@ -14,6 +14,8 @@ sqlalchemy = "^2.0.38"
 kedro = "^0.19.11"
 jinja2 = "^3.1.5"
 lazy-object-proxy = "^1.10.0"
+pydantic = "^2.11.2"
+pyyaml = "^6.0.2"
 
 
 [build-system]

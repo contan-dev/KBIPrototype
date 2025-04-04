@@ -1,6 +1,6 @@
 import pathlib
 import sqlite3
-from typing import Tuple
+from typing import Any
 import subprocess
 from typing import Callable
 from functools import wraps
@@ -48,8 +48,8 @@ class PipelineInteractiveBuilder:
         self.db_connection = self.get_db_hook()
 
         # Build the management objects
-        self.cat_manager = CatalogManager(self.db_connection)
-        self.param_manager = ParameterManager(self.pipeline_name, self.db_connection)
+        self.cat_manager = CatalogManager(self.db_connection, self._kedro_project_dir / 'kbi-project')
+        self.param_manager = ParameterManager(self.pipeline_name, self.db_connection, self._kedro_project_dir / 'kbi-project')
         self.pipeline_path = self._kedro_project_dir / 'kbi-project' / 'src' / 'kbi_project' / 'pipelines' / self.pipeline_name
         self.pipeline_manager = PipelineManager(self.pipeline_name, self.pipeline_path, self._kedro_project_dir / 'kbi-project', self.db_connection, self.verbose)
 
@@ -77,6 +77,30 @@ class PipelineInteractiveBuilder:
             - imports: the import statements to append
         """
         self.pipeline_manager.update_imports(imports)
+    
+    def update_catalog(self, catalog_name: str, catalog_type: str, catalog_content: dict[str, str]):
+        """
+        Build the catelog for the Kedro project.
+        """
+        self.cat_manager.update_catalog(catalog_name, catalog_type, catalog_content)
+    
+    def delete_from_catalog(self, catalog_name: str):
+        """
+        Delete the catalog from the Kedro project.
+        """
+        self.cat_manager.delete_from_catalog(catalog_name)
+    
+    def update_parameters(self, parameter_name: str, parameter_content: Any):
+        """
+        Update the parameters in the Kedro project.
+        """
+        self.param_manager.update_parameters(parameter_name, parameter_content)
+    
+    def delete_parameter(self, parameter_name: str):
+        """
+        Delete the parameter from the Kedro project.
+        """
+        self.param_manager.delete_parameter(parameter_name)
 
     def create_kedro_project(self):
         """
